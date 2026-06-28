@@ -1,31 +1,29 @@
-
-import os
-import re
 import io
-import textwrap
 from datetime import datetime
+from textwrap import shorten
 
-import numpy as np
 import pandas as pd
-import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
-# Optional PDF dependency
-try:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-    REPORTLAB_READY = True
-except Exception:
-    REPORTLAB_READY = False
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    PageBreak,
+)
 
-
-# =====================
-# Page Configuration
-# =====================
+# =========================
+# Page & Theme
+# =========================
 st.set_page_config(
     page_title="STC Quality Executive Dashboard",
     layout="wide",
@@ -33,241 +31,201 @@ st.set_page_config(
 )
 
 PURPLE = "#5A0AA2"
-PURPLE_2 = "#7B1FE6"
-TEAL = "#26C6DA"
-ORANGE = "#FF7A45"
+PURPLE_2 = "#7C1DEB"
+TEAL = "#2EC4D3"
+GREEN = "#18B885"
 PINK = "#EF476F"
-GREEN = "#10B981"
-GRAY = "#6B7280"
-LIGHT_BG = "#F8F6FB"
-CARD_BG = "#FFFFFF"
-BORDER = "#E7E0F0"
+ORANGE = "#FF6B3D"
+YELLOW = "#F7B500"
+TEXT = "#241B35"
+MUTED = "#766C8A"
+BORDER = "#E6DDF3"
+CARD = "#FFFFFF"
+BG = "#FBFAFD"
 
 st.markdown(
     f"""
     <style>
-        .block-container {{
-            padding-top: 1.0rem;
-            padding-bottom: 1.0rem;
-        }}
-        .main {{
-            background-color: {LIGHT_BG};
-        }}
-        .title-box {{
-            background: linear-gradient(90deg, {PURPLE}, {PURPLE_2});
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        html, body, [class*="css"] {{font-family: 'Inter', sans-serif;}}
+        .main .block-container {{padding-top: 1.0rem; padding-bottom: 2rem; max-width: 1500px;}}
+        .hero {{
+            background: linear-gradient(120deg, {PURPLE}, {PURPLE_2});
             color: white;
-            padding: 20px 26px;
-            border-radius: 18px;
-            margin-bottom: 16px;
-            box-shadow: 0 8px 24px rgba(90,10,162,0.18);
+            border-radius: 0 0 22px 22px;
+            padding: 24px 28px;
+            margin-bottom: 18px;
+            box-shadow: 0 18px 45px rgba(90,10,162,0.18);
+            animation: fadeInDown .65s ease-in-out;
         }}
-        .title-box h1 {{
-            font-size: 34px;
-            margin: 0;
-            font-weight: 800;
-        }}
-        .title-box p {{
-            font-size: 15px;
-            margin: 8px 0 0 0;
-            opacity: 0.92;
-        }}
+        .hero h1 {{margin: 0; font-size: 32px; font-weight: 800;}}
+        .hero p {{margin-top: 12px; opacity: .95; font-size: 14px;}}
         .metric-card {{
-            background: {CARD_BG};
+            background: {CARD};
             border: 1px solid {BORDER};
-            border-radius: 16px;
-            padding: 16px 18px;
-            box-shadow: 0 3px 14px rgba(40, 20, 70, 0.05);
+            border-radius: 14px;
+            padding: 18px 18px 16px 18px;
             min-height: 112px;
+            box-shadow: 0 8px 24px rgba(50, 30, 80, 0.06);
+            animation: fadeInUp .6s ease;
         }}
-        .metric-label {{
-            color: #6B6178;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }}
-        .metric-value {{
-            color: #2F2144;
-            font-size: 34px;
-            line-height: 1.1;
-            font-weight: 800;
-        }}
-        .metric-sub {{
-            color: #8A8198;
-            font-size: 13px;
-            margin-top: 8px;
-        }}
-        .section-title {{
-            font-size: 24px;
-            color: #2F2144;
-            font-weight: 800;
-            margin: 12px 0 10px 0;
-        }}
-        .small-note {{
-            color: #7A7288;
-            font-size: 13px;
-        }}
-        div[data-testid="stDataFrame"] {{
-            border: 1px solid {BORDER};
-            border-radius: 12px;
-            overflow: hidden;
-        }}
+        .metric-label {{font-size: 13px; color: {TEXT}; font-weight: 600;}}
+        .metric-value {{font-size: 32px; line-height: 1; font-weight: 800; margin-top: 12px;}}
+        .metric-note {{font-size: 12px; color: {MUTED}; margin-top: 12px;}}
+        .section-title {{font-size: 22px; font-weight: 800; color: {TEXT}; margin-top: 16px; margin-bottom: 8px;}}
+        .small-caption {{font-size: 12px; color: {MUTED};}}
+        .stDataFrame {{border-radius: 14px; overflow: hidden;}}
+        div[data-testid="stSidebar"] {{background-color: #F7F2FC;}}
+        @keyframes fadeInDown {{from {{opacity:0; transform: translateY(-15px);}} to {{opacity:1; transform: translateY(0);}}}}
+        @keyframes fadeInUp {{from {{opacity:0; transform: translateY(18px);}} to {{opacity:1; transform: translateY(0);}}}}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
-# =====================
+# =========================
 # Helpers
-# =====================
-def clean_text(value):
-    if pd.isna(value):
-        return ""
-    return str(value).strip()
+# =========================
+def _clean_bool_series(s: pd.Series) -> pd.Series:
+    return s.astype(str).str.strip().str.upper().isin(["Y", "YES", "TRUE", "1", "APPLIED"])
 
 
-def normalize_yes_no(value):
-    v = clean_text(value).upper()
-    if v in ["Y", "YES", "TRUE", "1", "APPLIED"]:
-        return "Y"
-    if v in ["N", "NO", "FALSE", "0", "NOT APPLIED", "NONE"]:
-        return "N"
-    return v if v else "N"
-
-
-def shorten_deviation(text, max_len=70):
-    text = clean_text(text)
-    text = re.sub(r"\s+", " ", text)
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 3] + "..."
-
-
-def classify_scope(row):
-    # Priority 1: use Designation if it exists.
-    designation = clean_text(row.get("Designation", "")).upper()
-    if "SAF" in designation:
-        return "Safety"
-    if "FIB" in designation:
-        return "Fiber"
-    if "CIV" in designation:
-        return "Civil"
-
-    # Priority 2: classify from category/subcategory/deviation keywords.
-    text = " ".join([
-        clean_text(row.get("Category", "")),
-        clean_text(row.get("SubCategory", "")),
-        clean_text(row.get("DeviationName", "")),
-    ]).upper()
-
-    safety_kw = ["SAFETY", "PPE", "UNIFORM", "SIGNBOARD", "PEDESTRIAN", "WORKER", "ID BADGE", "REGISTER"]
-    fiber_kw = ["FIBER", "CABLE", "SPLIC", "LABEL", "ODF", "PATCH", "JOINT", "CLOSURE"]
-    civil_kw = ["CIVIL", "TRENCH", "BORE", "DUCT", "CONDUIT", "MANHOLE", "HANDHOLE", "ASPHALT", "BACKFILL", "PERMIT", "DEBRIS", "ROUTE", "WIDTH", "DEPTH", "SPACER"]
-
-    if any(k in text for k in safety_kw):
-        return "Safety"
-    if any(k in text for k in fiber_kw):
-        return "Fiber"
-    if any(k in text for k in civil_kw):
-        return "Civil"
-    return "Other"
+def _normalize_text(s: pd.Series) -> pd.Series:
+    return s.fillna("").astype(str).str.strip()
 
 
 @st.cache_data(show_spinner=False)
-def load_excel(uploaded_file=None):
-    if uploaded_file is not None:
-        data = pd.read_excel(uploaded_file)
+def load_data(file_obj=None) -> pd.DataFrame:
+    if file_obj is not None:
+        raw = pd.read_excel(file_obj)
     else:
-        default_path = os.path.join(os.path.dirname(__file__), "Deviation.xlsx")
-        data = pd.read_excel(default_path)
+        raw = pd.read_excel("Deviation.xlsx")
 
-    data.columns = [str(c).strip() for c in data.columns]
-
-    required = ["District", "WorkOrderNum", "DeviationName", "IsPenalty"]
-    missing = [c for c in required if c not in data.columns]
+    raw.columns = [str(c).strip() for c in raw.columns]
+    required = ["District", "WorkOrderNum", "DeviationName"]
+    missing = [c for c in required if c not in raw.columns]
     if missing:
-        st.error(f"Missing required columns in Deviation.xlsx: {', '.join(missing)}")
-        st.stop()
+        raise ValueError(f"Missing mandatory columns: {missing}")
 
-    data["District"] = data["District"].apply(clean_text).str.upper()
-    data["WorkOrderNum"] = data["WorkOrderNum"].apply(clean_text)
-    data["DeviationName"] = data["DeviationName"].apply(clean_text)
-    data["DeviationShort"] = data["DeviationName"].apply(shorten_deviation)
-    data["PenaltyFlag"] = data["IsPenalty"].apply(normalize_yes_no)
-    data["PenaltyStatus"] = np.where(data["PenaltyFlag"].eq("Y"), "Penalty Applied", "No Penalty")
-    if "ServiceAffecting" in data.columns:
-        data["ServiceAffectingClean"] = data["ServiceAffecting"].apply(normalize_yes_no)
-    else:
-        data["ServiceAffectingClean"] = "N"
+    df = raw.copy()
+    df["District"] = _normalize_text(df.get("District", pd.Series(index=df.index))).str.upper()
+    df["WorkOrderNum"] = _normalize_text(df.get("WorkOrderNum", pd.Series(index=df.index)))
+    df["DeviationName"] = _normalize_text(df.get("DeviationName", pd.Series(index=df.index)))
+    df["Category"] = _normalize_text(df.get("Category", pd.Series(index=df.index)))
+    df["SubCategory"] = _normalize_text(df.get("SubCategory", pd.Series(index=df.index)))
+    df["Designation"] = _normalize_text(df.get("Designation", pd.Series(index=df.index)))
+    df["DeviationStatus"] = _normalize_text(df.get("DeviationStatus", pd.Series(index=df.index)))
+    df["Civil Foreman"] = _normalize_text(df.get("Civil Foreman", pd.Series(index=df.index))).replace("", "—")
+    df["Inspector"] = _normalize_text(df.get("Inspector", pd.Series(index=df.index))).replace("", "—")
+    df["IsPenalty"] = _normalize_text(df.get("IsPenalty", pd.Series(index=df.index)))
+    df["ServiceAffecting"] = _normalize_text(df.get("ServiceAffecting", pd.Series(index=df.index)))
+    df["Expected Penalties"] = _normalize_text(df.get("Expected Penalties", pd.Series(index=df.index)))
 
-    if "DateOfDeviation" in data.columns:
-        data["DateOfDeviation"] = pd.to_datetime(data["DateOfDeviation"], errors="coerce")
+    df["PenaltyApplied"] = _clean_bool_series(df["IsPenalty"])
+    df["ServiceAffectingFlag"] = df["ServiceAffecting"].astype(str).str.strip().str.upper().isin(["Y", "YES", "TRUE", "1"])
+    # Expected Penalties means: penalty should have applied but was waived/cancelled.
+    df["ExpectedPenaltyWaived"] = df["Expected Penalties"].astype(str).str.strip().str.upper().isin(["Y", "YES", "TRUE", "1"])
+    df["NoPenaltyApplied"] = ~df["PenaltyApplied"]
 
-    data["Scope"] = data.apply(classify_scope, axis=1)
+    def classify(row) -> str:
+        combined = " ".join([
+            str(row.get("Designation", "")),
+            str(row.get("Category", "")),
+            str(row.get("SubCategory", "")),
+            str(row.get("DeviationName", "")),
+        ]).upper()
+        if "SAFETY" in combined or "H&S" in combined or "WORKER" in combined or "ID BADGE" in combined or "UNIFORM" in combined:
+            return "Safety"
+        if "FIBER" in combined or "CABLE" in combined or "SPLIC" in combined or "LABEL" in combined:
+            return "Fiber"
+        if "CIVIL" in combined or "TRENCH" in combined or "DUCT" in combined or "BACKFILL" in combined or "MANHOLE" in combined or "HANDHOLE" in combined or "CABINET" in combined or "MATERIAL" in combined:
+            return "Civil"
+        return "Other"
 
-    return data
-
-
-def filter_data(data):
-    with st.sidebar:
-        st.markdown("### Filters")
-        district = st.multiselect("District", sorted(data["District"].dropna().unique()))
-        wo = st.multiselect("Work Order", sorted(data["WorkOrderNum"].dropna().unique()))
-        scope = st.multiselect("Classification", ["Civil", "Fiber", "Safety", "Other"])
-        penalty = st.multiselect("Penalty Status", ["Penalty Applied", "No Penalty"])
-
-        if "DeviationStatus" in data.columns:
-            status = st.multiselect("Deviation Status", sorted(data["DeviationStatus"].dropna().astype(str).unique()))
-        else:
-            status = []
-
-        search = st.text_input("Search in Deviation Name / WO", placeholder="Type keyword or WO...")
-
-    f = data.copy()
-
-    if district:
-        f = f[f["District"].isin(district)]
-    if wo:
-        f = f[f["WorkOrderNum"].isin(wo)]
-    if scope:
-        f = f[f["Scope"].isin(scope)]
-    if penalty:
-        f = f[f["PenaltyStatus"].isin(penalty)]
-    if status and "DeviationStatus" in f.columns:
-        f = f[f["DeviationStatus"].astype(str).isin(status)]
-    if search:
-        s = search.strip().lower()
-        f = f[
-            f["DeviationName"].str.lower().str.contains(s, na=False)
-            | f["WorkOrderNum"].str.lower().str.contains(s, na=False)
-        ]
-
-    return f
+    df["TeamClassification"] = df.apply(classify, axis=1)
+    return df
 
 
-def pct(part, total):
-    if total == 0:
-        return 0
-    return round((part / total) * 100, 1)
+def pct(n, d):
+    return 0 if d == 0 else round((n / d) * 100, 1)
 
 
-def metric_card(label, value, sub="", accent=PURPLE):
+def comma_join_unique(values, limit=3):
+    vals = [v for v in pd.unique(pd.Series(values).dropna()) if str(v).strip() not in ["", "—", "nan"]]
+    if not vals:
+        return "—"
+    text = " / ".join(map(str, vals[:limit]))
+    if len(vals) > limit:
+        text += f" +{len(vals)-limit}"
+    return text
+
+
+def top_deviation_nature(group: pd.DataFrame, limit=3) -> str:
+    vc = group["DeviationName"].value_counts().head(limit)
+    if vc.empty:
+        return "—"
+    return " | ".join([f"{shorten(str(k), width=38, placeholder='…')} ({int(v)})" for k, v in vc.items()])
+
+
+def build_wo_summary(df: pd.DataFrame) -> pd.DataFrame:
+    grouped = []
+    total_rows = len(df)
+    for wo, g in df.groupby("WorkOrderNum", dropna=False):
+        row = {
+            "Work Order": wo,
+            "District": comma_join_unique(g["District"], limit=2),
+            "Civil Foreman": comma_join_unique(g["Civil Foreman"], limit=3),
+            "Inspector": comma_join_unique(g["Inspector"], limit=3),
+            "Total Deviations": int(len(g)),
+            "Penalty Applied": int(g["PenaltyApplied"].sum()),
+            "No Penalty Applied": int(g["NoPenaltyApplied"].sum()),
+            "Expected Penalties Waived": int(g["ExpectedPenaltyWaived"].sum()),
+            "Service Affecting": int(g["ServiceAffectingFlag"].sum()),
+            "Civil": int((g["TeamClassification"] == "Civil").sum()),
+            "Fiber": int((g["TeamClassification"] == "Fiber").sum()),
+            "Safety": int((g["TeamClassification"] == "Safety").sum()),
+            "Other": int((g["TeamClassification"] == "Other").sum()),
+            "% of Total": pct(len(g), total_rows),
+            "Top Deviation Nature": top_deviation_nature(g, limit=3),
+        }
+        grouped.append(row)
+    out = pd.DataFrame(grouped).sort_values("Total Deviations", ascending=False).reset_index(drop=True)
+    return out
+
+
+def build_deviation_nature(df: pd.DataFrame) -> pd.DataFrame:
+    base = (
+        df.groupby(["WorkOrderNum", "District", "Civil Foreman", "Inspector", "TeamClassification", "Category", "SubCategory", "DeviationName"], dropna=False)
+        .agg(
+            Total=("DeviationName", "size"),
+            Penalty_Applied=("PenaltyApplied", "sum"),
+            No_Penalty=("NoPenaltyApplied", "sum"),
+            Expected_Penalties_Waived=("ExpectedPenaltyWaived", "sum"),
+            Service_Affecting=("ServiceAffectingFlag", "sum"),
+        )
+        .reset_index()
+        .sort_values(["Total", "Penalty_Applied"], ascending=False)
+    )
+    return base.rename(columns={"WorkOrderNum": "Work Order", "TeamClassification": "Classification"})
+
+
+def color_metric(label, value, note, color):
     st.markdown(
         f"""
         <div class="metric-card">
             <div class="metric-label">{label}</div>
-            <div class="metric-value" style="color:{accent};">{value}</div>
-            <div class="metric-sub">{sub}</div>
+            <div class="metric-value" style="color:{color};">{value}</div>
+            <div class="metric-note">{note}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def make_pdf_report(data, wo_summary, top_deviation, scope_summary):
-    if not REPORTLAB_READY:
-        return None
-
+# =========================
+# PDF Builder
+# =========================
+def make_pdf(df: pd.DataFrame, wo_summary: pd.DataFrame, nature: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -277,388 +235,298 @@ def make_pdf_report(data, wo_summary, top_deviation, scope_summary):
         topMargin=0.7 * cm,
         bottomMargin=0.7 * cm,
     )
-
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "TitlePurple",
-        parent=styles["Title"],
-        fontSize=20,
-        textColor=colors.HexColor(PURPLE),
-        spaceAfter=10,
-    )
-    h_style = ParagraphStyle(
-        "Heading",
-        parent=styles["Heading2"],
-        fontSize=14,
-        textColor=colors.HexColor("#2F2144"),
-        spaceBefore=8,
-        spaceAfter=6,
-    )
-    normal = ParagraphStyle(
-        "NormalSmall",
-        parent=styles["Normal"],
-        fontSize=8,
-        leading=10,
-    )
+    styles.add(ParagraphStyle(name="TitlePurple", parent=styles["Title"], textColor=colors.HexColor(PURPLE), fontSize=22, leading=25, alignment=TA_CENTER, spaceAfter=6))
+    styles.add(ParagraphStyle(name="Sub", parent=styles["Normal"], textColor=colors.HexColor(MUTED), fontSize=9.5, alignment=TA_CENTER, spaceAfter=8))
+    styles.add(ParagraphStyle(name="Section", parent=styles["Heading2"], textColor=colors.HexColor(TEXT), fontSize=14, leading=17, spaceBefore=8, spaceAfter=5))
+    styles.add(ParagraphStyle(name="Cell", parent=styles["Normal"], fontSize=6.5, leading=7.6, alignment=TA_LEFT))
+    styles.add(ParagraphStyle(name="HeaderCell", parent=styles["Normal"], fontSize=6.6, leading=7.8, textColor=colors.white, alignment=TA_CENTER))
 
     story = []
-    story.append(Paragraph("STC Quality Executive Dashboard", title_style))
-    story.append(Paragraph("Deviation WO drilldown • penalty status • Civil / Fiber / Safety classification", styles["Normal"]))
-    story.append(Spacer(1, 8))
+    story.append(Paragraph("STC Quality Executive Dashboard", styles["TitlePurple"]))
+    story.append(Paragraph("Deviation WO drilldown • penalty applied vs waived • Civil / Fiber / Safety classification • Foreman & Inspector accountability", styles["Sub"]))
 
-    total = len(data)
-    penalty_y = int((data["PenaltyFlag"] == "Y").sum())
-    penalty_n = int((data["PenaltyFlag"] != "Y").sum())
-    service_affecting = int((data["ServiceAffectingClean"] == "Y").sum())
-    unique_wo = data["WorkOrderNum"].nunique()
+    total = len(df)
+    penalty = int(df["PenaltyApplied"].sum())
+    no_penalty = int(df["NoPenaltyApplied"].sum())
+    waived = int(df["ExpectedPenaltyWaived"].sum())
+    service = int(df["ServiceAffectingFlag"].sum())
+    unique_wo = df["WorkOrderNum"].nunique()
 
-    cards = [
+    metrics = [
         ["Total Deviations", f"{total:,}"],
         ["Unique WOs", f"{unique_wo:,}"],
-        ["Penalty Applied", f"{penalty_y:,} ({pct(penalty_y, total)}%)"],
-        ["No Penalty", f"{penalty_n:,} ({pct(penalty_n, total)}%)"],
-        ["Service Affecting", f"{service_affecting:,}"],
+        ["Penalty Applied", f"{penalty:,} ({pct(penalty,total)}%)"],
+        ["No Penalty Applied", f"{no_penalty:,} ({pct(no_penalty,total)}%)"],
+        ["Expected Penalties Waived", f"{waived:,} ({pct(waived,total)}%)"],
+        ["Service Affecting", f"{service:,}"],
     ]
-    card_table = Table(cards, colWidths=[3.2 * cm, 3.0 * cm])
-    card_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F4EEFB")),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#2F2144")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#DFD2EC")),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-    ]))
-    story.append(card_table)
-    story.append(Spacer(1, 10))
-
-    story.append(Paragraph("Top Work Orders", h_style))
-    wo_pdf = wo_summary.head(20).copy()
-    table_data = [["WorkOrder", "District", "Total", "Penalty", "No Penalty", "Civil", "Fiber", "Safety", "% of Total"]]
-    for _, r in wo_pdf.iterrows():
-        table_data.append([
-            str(r["WorkOrderNum"]), str(r["District"]), str(r["Total Deviations"]),
-            str(r["Penalty Applied"]), str(r["No Penalty"]),
-            str(r.get("Civil", 0)), str(r.get("Fiber", 0)), str(r.get("Safety", 0)),
-            f'{r["% of Total"]:.1f}%'
-        ])
-    t = Table(table_data, repeatRows=1)
+    t = Table(metrics, colWidths=[4.6 * cm, 3.1 * cm], hAlign="CENTER")
     t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PURPLE)),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E6E0ED")),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("ALIGN", (2, 1), (-1, -1), "CENTER"),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("F2ECFA")),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor(TEXT)),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("D9CCE9")),
+        ("ALIGN", (1, 0), (1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("F7F2FC"), colors.HexColor("FFFFFF")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(t)
+    story.append(Spacer(1, 0.25 * cm))
+
+    # Board table: compact but complete
+    story.append(Paragraph("Board Work Order Executive Summary", styles["Section"]))
+    board_cols = [
+        "Work Order", "District", "Civil Foreman", "Inspector", "Total Deviations",
+        "Penalty Applied", "No Penalty Applied", "Expected Penalties Waived", "Service Affecting",
+        "Civil", "Fiber", "Safety", "Other", "% of Total", "Top Deviation Nature",
+    ]
+    board_df = wo_summary[board_cols].copy()
+    data = [[Paragraph(str(c), styles["HeaderCell"]) for c in board_cols]]
+    for _, r in board_df.iterrows():
+        data.append([Paragraph(str(r[c]), styles["Cell"]) for c in board_cols])
+    col_widths = [2.05*cm, 1.45*cm, 2.65*cm, 2.25*cm, 1.35*cm, 1.35*cm, 1.45*cm, 1.65*cm, 1.25*cm, 0.85*cm, 0.85*cm, 0.95*cm, 0.85*cm, 1.05*cm, 5.2*cm]
+    table = Table(data, colWidths=col_widths, repeatRows=1, hAlign="CENTER")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PURPLE)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("DDD3EA")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("FAF7FE")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (4, 1), (13, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+    ]))
+    story.append(table)
+
+    # Deviation nature table on next page
     story.append(PageBreak())
+    story.append(Paragraph("Detailed Deviation Nature by Work Order", styles["TitlePurple"]))
+    story.append(Paragraph("This table shows the exact nature of repeated deviations by WO with responsible foreman and inspector names.", styles["Sub"]))
 
-    story.append(Paragraph("Classification Summary", h_style))
-    scope_table = [["Scope", "Count", "%"]]
-    for _, r in scope_summary.iterrows():
-        scope_table.append([str(r["Scope"]), str(r["Count"]), f'{r["%"]:.1f}%'])
-    t2 = Table(scope_table, colWidths=[5 * cm, 3 * cm, 3 * cm])
-    t2.setStyle(TableStyle([
+    detail_cols = [
+        "Work Order", "District", "Civil Foreman", "Inspector", "Classification", "Category", "SubCategory", "DeviationName",
+        "Total", "Penalty_Applied", "No_Penalty", "Expected_Penalties_Waived", "Service_Affecting",
+    ]
+    detail_df = nature[detail_cols].copy()
+    detail_data = [[Paragraph(str(c).replace("_", " "), styles["HeaderCell"]) for c in detail_cols]]
+    for _, r in detail_df.iterrows():
+        detail_data.append([Paragraph(str(r[c]), styles["Cell"]) for c in detail_cols])
+
+    detail_widths = [2.0*cm, 1.3*cm, 2.35*cm, 2.1*cm, 1.45*cm, 1.6*cm, 1.85*cm, 6.3*cm, 0.75*cm, 0.95*cm, 0.95*cm, 1.15*cm, 0.95*cm]
+    detail_table = Table(detail_data, colWidths=detail_widths, repeatRows=1, hAlign="CENTER")
+    detail_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PURPLE)),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E6E0ED")),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("DDD3EA")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("FAF7FE")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (8, 1), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
-    story.append(t2)
-    story.append(Spacer(1, 10))
+    story.append(detail_table)
 
-    story.append(Paragraph("Top Deviation Types", h_style))
-    dev_table = [["Deviation Type", "Count", "% of Total", "Penalty Applied"]]
-    for _, r in top_deviation.head(25).iterrows():
-        dev_table.append([
-            Paragraph(str(r["DeviationShort"]), normal),
-            str(r["Count"]),
-            f'{r["% of Total"]:.1f}%',
-            str(r["Penalty Applied"])
-        ])
-    t3 = Table(dev_table, colWidths=[14 * cm, 3 * cm, 3 * cm, 3 * cm], repeatRows=1)
-    t3.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PURPLE)),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E6E0ED")),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    story.append(t3)
+    def _footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor(MUTED))
+        canvas.drawString(0.8 * cm, 0.35 * cm, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Source: Deviation.xlsx")
+        canvas.drawRightString(28.8 * cm, 0.35 * cm, f"Page {doc.page}")
+        canvas.restoreState()
 
-    doc.build(story)
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     buffer.seek(0)
-    return buffer
+    return buffer.read()
 
 
-# =====================
-# Load Data
-# =====================
+# =========================
+# Sidebar / Data
+# =========================
 with st.sidebar:
-    st.markdown("## Data Source")
-    uploaded_file = st.file_uploader("Upload Deviation.xlsx", type=["xlsx"])
-    st.caption("The dashboard runs on one file only: Deviation.xlsx")
+    st.markdown("### 📂 Source File")
+    uploaded = st.file_uploader("Upload updated Deviation.xlsx", type=["xlsx"], help="Optional. If not uploaded, app uses the included Deviation.xlsx file.")
+    st.markdown("### 🔎 Filters")
 
-data = load_excel(uploaded_file)
-filtered = filter_data(data)
+try:
+    df = load_data(uploaded)
+except Exception as exc:
+    st.error(f"Unable to read Deviation.xlsx: {exc}")
+    st.stop()
 
-# =====================
-# Header
-# =====================
+with st.sidebar:
+    districts = sorted(df["District"].dropna().unique())
+    wos = sorted(df["WorkOrderNum"].dropna().unique())
+    inspectors = sorted([x for x in df["Inspector"].dropna().unique() if x != "—"])
+    foremen = sorted([x for x in df["Civil Foreman"].dropna().unique() if x != "—"])
+    selected_district = st.multiselect("District", districts)
+    selected_wo = st.multiselect("Work Order", wos)
+    selected_foreman = st.multiselect("Civil Foreman", foremen)
+    selected_inspector = st.multiselect("Inspector", inspectors)
+    selected_class = st.multiselect("Classification", ["Civil", "Fiber", "Safety", "Other"])
+    penalty_view = st.radio("Penalty View", ["All", "Penalty Applied", "No Penalty", "Expected Penalties Waived"], horizontal=False)
+
+filtered = df.copy()
+if selected_district:
+    filtered = filtered[filtered["District"].isin(selected_district)]
+if selected_wo:
+    filtered = filtered[filtered["WorkOrderNum"].isin(selected_wo)]
+if selected_foreman:
+    filtered = filtered[filtered["Civil Foreman"].isin(selected_foreman)]
+if selected_inspector:
+    filtered = filtered[filtered["Inspector"].isin(selected_inspector)]
+if selected_class:
+    filtered = filtered[filtered["TeamClassification"].isin(selected_class)]
+if penalty_view == "Penalty Applied":
+    filtered = filtered[filtered["PenaltyApplied"]]
+elif penalty_view == "No Penalty":
+    filtered = filtered[filtered["NoPenaltyApplied"]]
+elif penalty_view == "Expected Penalties Waived":
+    filtered = filtered[filtered["ExpectedPenaltyWaived"]]
+
+wo_summary = build_wo_summary(filtered)
+nature = build_deviation_nature(filtered)
+
+# =========================
+# Dashboard UI
+# =========================
 st.markdown(
     """
-    <div class="title-box">
+    <div class="hero">
         <h1>STC Quality Executive Dashboard</h1>
-        <p>Deviation analysis • Work Order performance • Penalty applied vs not applied • Civil / Fiber / Safety classification</p>
+        <p>Deviation analysis • Work Order performance • Penalty applied vs waived • Civil / Fiber / Safety accountability • Foreman & Inspector control view</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# =====================
-# KPIs
-# =====================
 total = len(filtered)
+penalty = int(filtered["PenaltyApplied"].sum())
+no_penalty = int(filtered["NoPenaltyApplied"].sum())
+waived = int(filtered["ExpectedPenaltyWaived"].sum())
+service = int(filtered["ServiceAffectingFlag"].sum())
 unique_wo = filtered["WorkOrderNum"].nunique()
-penalty_applied = int((filtered["PenaltyFlag"] == "Y").sum())
-no_penalty = int((filtered["PenaltyFlag"] != "Y").sum())
-service_affecting = int((filtered["ServiceAffectingClean"] == "Y").sum())
 
-c1, c2, c3, c4, c5 = st.columns(5)
+m1, m2, m3, m4, m5, m6 = st.columns(6)
+with m1:
+    color_metric("Total Deviations", f"{total:,}", "All records after filters", PURPLE)
+with m2:
+    color_metric("Unique WOs", f"{unique_wo:,}", "Impacted Work Orders", TEAL)
+with m3:
+    color_metric("Penalty Applied", f"{penalty:,}", f"{pct(penalty,total)}% of deviations", PINK)
+with m4:
+    color_metric("No Penalty Applied", f"{no_penalty:,}", f"{pct(no_penalty,total)}% of deviations", GREEN)
+with m5:
+    color_metric("Expected Penalties Waived", f"{waived:,}", "Should be penalized but cancelled", ORANGE)
+with m6:
+    color_metric("Service Affecting", f"{service:,}", f"{pct(service,total)}% of deviations", YELLOW)
+
+st.markdown('<div class="section-title">Executive Visualizations</div>', unsafe_allow_html=True)
+
+c1, c2 = st.columns([1.35, 1])
 with c1:
-    metric_card("Total Deviations", f"{total:,}", "All records after filters", PURPLE)
-with c2:
-    metric_card("Unique WOs", f"{unique_wo:,}", "Impacted Work Orders", TEAL)
-with c3:
-    metric_card("Penalty Applied", f"{penalty_applied:,}", f"{pct(penalty_applied, total)}% of deviations", PINK)
-with c4:
-    metric_card("No Penalty", f"{no_penalty:,}", f"{pct(no_penalty, total)}% of deviations", GREEN)
-with c5:
-    metric_card("Service Affecting", f"{service_affecting:,}", f"{pct(service_affecting, total)}% of deviations", ORANGE)
-
-st.markdown('<div class="section-title">Executive Charts</div>', unsafe_allow_html=True)
-
-# =====================
-# Summary Frames
-# =====================
-scope_summary = (
-    filtered.groupby("Scope")
-    .size()
-    .reset_index(name="Count")
-    .sort_values("Count", ascending=False)
-)
-scope_summary["%"] = scope_summary["Count"].apply(lambda x: pct(x, total))
-
-penalty_summary = (
-    filtered.groupby("PenaltyStatus")
-    .size()
-    .reset_index(name="Count")
-    .sort_values("Count", ascending=False)
-)
-
-top_deviation = (
-    filtered.groupby("DeviationShort")
-    .agg(
-        Count=("DeviationShort", "size"),
-        **{"Penalty Applied": ("PenaltyFlag", lambda x: int((x == "Y").sum()))},
-        **{"No Penalty": ("PenaltyFlag", lambda x: int((x != "Y").sum()))},
-    )
-    .reset_index()
-    .sort_values("Count", ascending=False)
-)
-top_deviation["% of Total"] = top_deviation["Count"].apply(lambda x: pct(x, total))
-
-scope_pivot = pd.crosstab(filtered["WorkOrderNum"], filtered["Scope"])
-penalty_pivot = pd.crosstab(filtered["WorkOrderNum"], filtered["PenaltyStatus"])
-wo_base = (
-    filtered.groupby(["WorkOrderNum", "District"])
-    .size()
-    .reset_index(name="Total Deviations")
-    .sort_values("Total Deviations", ascending=False)
-)
-
-wo_summary = wo_base.merge(scope_pivot, on="WorkOrderNum", how="left").merge(penalty_pivot, on="WorkOrderNum", how="left")
-for col in ["Civil", "Fiber", "Safety", "Other", "Penalty Applied", "No Penalty"]:
-    if col not in wo_summary.columns:
-        wo_summary[col] = 0
-wo_summary["% of Total"] = wo_summary["Total Deviations"].apply(lambda x: pct(x, total))
-wo_summary = wo_summary.sort_values("Total Deviations", ascending=False)
-
-# =====================
-# Charts Row 1
-# =====================
-col_a, col_b = st.columns([1.15, 0.85])
-
-with col_a:
-    st.markdown("#### Top Work Orders by Deviation Count")
-    if wo_summary.empty:
-        st.info("No records to display.")
-    else:
-        top_wo_chart = wo_summary.head(15).sort_values("Total Deviations")
-        fig = px.bar(
-            top_wo_chart,
+    st.subheader("Top Work Orders by Deviation Count")
+    if not wo_summary.empty:
+        fig_wo = px.bar(
+            wo_summary.sort_values("Total Deviations"),
             x="Total Deviations",
-            y="WorkOrderNum",
+            y="Work Order",
             color="District",
             orientation="h",
             text="Total Deviations",
+            custom_data=["Civil Foreman", "Inspector", "Penalty Applied", "Expected Penalties Waived", "Safety", "Civil", "Fiber"],
             color_discrete_sequence=[PURPLE, TEAL, ORANGE, PINK, GREEN],
+            animation_frame=None,
         )
-        fig.update_traces(textposition="outside", cliponaxis=False)
-        fig.update_layout(
-            height=460,
-            margin=dict(l=5, r=20, t=20, b=20),
-            xaxis_title="Deviation Count",
-            yaxis_title="Work Order",
-            legend_title="District",
+        fig_wo.update_traces(
+            textposition="outside",
+            hovertemplate=(
+                "<b>WO:</b> %{y}<br>"
+                "<b>Total:</b> %{x}<br>"
+                "<b>Foreman:</b> %{customdata[0]}<br>"
+                "<b>Inspector:</b> %{customdata[1]}<br>"
+                "<b>Penalty Applied:</b> %{customdata[2]}<br>"
+                "<b>Expected Penalties Waived:</b> %{customdata[3]}<br>"
+                "<b>Safety / Civil / Fiber:</b> %{customdata[4]} / %{customdata[5]} / %{customdata[6]}<extra></extra>"
+            ),
         )
-        st.plotly_chart(fig, use_container_width=True)
-
-with col_b:
-    st.markdown("#### Penalty Applied vs No Penalty")
-    if penalty_summary.empty:
-        st.info("No records to display.")
+        fig_wo.update_layout(height=440, margin=dict(l=10, r=25, t=10, b=10), plot_bgcolor="white", paper_bgcolor="white")
+        st.plotly_chart(fig_wo, use_container_width=True)
     else:
-        fig = px.pie(
-            penalty_summary,
-            names="PenaltyStatus",
-            values="Count",
-            hole=0.55,
-            color="PenaltyStatus",
-            color_discrete_map={
-                "Penalty Applied": PINK,
-                "No Penalty": GREEN,
-            },
-        )
-        fig.update_traces(textinfo="label+percent+value")
-        fig.update_layout(height=460, margin=dict(l=10, r=10, t=20, b=20))
-        st.plotly_chart(fig, use_container_width=True)
+        st.warning("No data available for selected filters.")
 
-# =====================
-# Charts Row 2
-# =====================
-col_c, col_d = st.columns([0.85, 1.15])
-
-with col_c:
-    st.markdown("#### Civil / Fiber / Safety Classification")
-    if scope_summary.empty:
-        st.info("No records to display.")
-    else:
-        fig = px.bar(
-            scope_summary.sort_values("Count"),
-            x="Count",
-            y="Scope",
-            orientation="h",
-            text="Count",
-            color="Scope",
-            color_discrete_map={
-                "Civil": PURPLE,
-                "Fiber": TEAL,
-                "Safety": ORANGE,
-                "Other": GRAY,
-            },
-        )
-        fig.update_traces(textposition="outside", cliponaxis=False)
-        fig.update_layout(height=430, margin=dict(l=10, r=20, t=20, b=20), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-
-with col_d:
-    st.markdown("#### Most Common Deviation Types")
-    if top_deviation.empty:
-        st.info("No records to display.")
-    else:
-        top_dev_chart = top_deviation.head(12).sort_values("Count")
-        fig = px.bar(
-            top_dev_chart,
-            x="Count",
-            y="DeviationShort",
-            orientation="h",
-            text="Count",
-            color_discrete_sequence=[PURPLE],
-        )
-        fig.update_traces(textposition="outside", cliponaxis=False)
-        fig.update_layout(
-            height=430,
-            margin=dict(l=10, r=20, t=20, b=20),
-            xaxis_title="Deviation Count",
-            yaxis_title="Deviation Type",
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-# =====================
-# Heatmap
-# =====================
-st.markdown('<div class="section-title">Work Order Classification Heatmap</div>', unsafe_allow_html=True)
-heat = pd.crosstab(filtered["WorkOrderNum"], filtered["Scope"])
-if not heat.empty:
-    heat = heat.loc[heat.sum(axis=1).sort_values(ascending=False).head(20).index]
-    fig = px.imshow(
-        heat,
-        text_auto=True,
-        aspect="auto",
-        color_continuous_scale=[[0, "#F3E8FF"], [1, PURPLE]],
+with c2:
+    st.subheader("Penalty Applied vs Waived/Not Applied")
+    penalty_df = pd.DataFrame({
+        "Status": ["Penalty Applied", "Expected Penalties Waived", "Other No Penalty"],
+        "Count": [penalty, waived, max(no_penalty - waived, 0)],
+    })
+    fig_pen = px.pie(
+        penalty_df,
+        values="Count",
+        names="Status",
+        hole=0.58,
+        color="Status",
+        color_discrete_map={"Penalty Applied": PINK, "Expected Penalties Waived": ORANGE, "Other No Penalty": GREEN},
     )
-    fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10), coloraxis_showscale=False)
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("No records to display.")
+    fig_pen.update_traces(textinfo="label+value+percent", hovertemplate="%{label}<br>%{value} deviations<br>%{percent}<extra></extra>")
+    fig_pen.update_layout(height=440, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=-0.05))
+    st.plotly_chart(fig_pen, use_container_width=True)
 
-# =====================
-# Tables
-# =====================
-st.markdown('<div class="section-title">WO Executive Summary</div>', unsafe_allow_html=True)
+c3, c4 = st.columns([1, 1])
+with c3:
+    st.subheader("Civil / Fiber / Safety Classification")
+    cls = filtered["TeamClassification"].value_counts().reset_index()
+    cls.columns = ["Classification", "Count"]
+    fig_cls = px.bar(
+        cls,
+        x="Classification",
+        y="Count",
+        color="Classification",
+        text="Count",
+        color_discrete_map={"Civil": PURPLE, "Fiber": TEAL, "Safety": ORANGE, "Other": MUTED},
+    )
+    fig_cls.update_traces(textposition="outside")
+    fig_cls.update_layout(height=360, showlegend=False, margin=dict(l=10, r=10, t=10, b=10), plot_bgcolor="white")
+    st.plotly_chart(fig_cls, use_container_width=True)
+
+with c4:
+    st.subheader("Foreman / Inspector Accountability")
+    people = filtered.groupby(["Civil Foreman", "Inspector"], dropna=False).size().reset_index(name="Deviation Count").sort_values("Deviation Count", ascending=False)
+    fig_people = px.treemap(
+        people,
+        path=["Civil Foreman", "Inspector"],
+        values="Deviation Count",
+        color="Deviation Count",
+        color_continuous_scale=["#F3E8FF", PURPLE],
+    )
+    fig_people.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10))
+    st.plotly_chart(fig_people, use_container_width=True)
+
+st.markdown('<div class="section-title">Board Work Order Executive Summary</div>', unsafe_allow_html=True)
+st.caption("This is the main table that will appear in the PDF export. It includes Civil Foreman, Inspector, Expected Penalties Waived and full WO numbers.")
 show_cols = [
-    "WorkOrderNum", "District", "Total Deviations", "% of Total",
-    "Penalty Applied", "No Penalty", "Civil", "Fiber", "Safety", "Other"
+    "Work Order", "District", "Civil Foreman", "Inspector", "Total Deviations",
+    "Penalty Applied", "No Penalty Applied", "Expected Penalties Waived", "Service Affecting",
+    "Civil", "Fiber", "Safety", "Other", "% of Total", "Top Deviation Nature",
 ]
-st.dataframe(wo_summary[show_cols], use_container_width=True, hide_index=True)
+st.dataframe(wo_summary[show_cols], use_container_width=True, hide_index=True, height=360)
 
-st.markdown('<div class="section-title">Deviation Nature by WO</div>', unsafe_allow_html=True)
-wo_nature = (
-    filtered.groupby(["WorkOrderNum", "District", "Scope", "DeviationShort", "PenaltyStatus"])
-    .size()
-    .reset_index(name="Count")
-    .sort_values(["WorkOrderNum", "Count"], ascending=[True, False])
-)
-st.dataframe(wo_nature, use_container_width=True, hide_index=True)
+st.markdown('<div class="section-title">Detailed Deviation Nature by Work Order</div>', unsafe_allow_html=True)
+st.dataframe(nature, use_container_width=True, hide_index=True, height=420)
 
-# =====================
-# Export
-# =====================
-st.markdown('<div class="section-title">Export</div>', unsafe_allow_html=True)
-export_cols = [
-    "District", "WorkOrderNum", "DeviationName", "Scope", "PenaltyStatus",
-    "IsPenalty", "ServiceAffectingClean"
-]
-for optional in ["Category", "SubCategory", "Designation", "DeviationStatus", "CorrectionTime", "DateOfDeviation"]:
-    if optional in filtered.columns and optional not in export_cols:
-        export_cols.append(optional)
-
-excel_buffer = io.BytesIO()
-with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-    wo_summary[show_cols].to_excel(writer, index=False, sheet_name="WO Summary")
-    top_deviation.to_excel(writer, index=False, sheet_name="Top Deviations")
-    scope_summary.to_excel(writer, index=False, sheet_name="Classification")
-    filtered[export_cols].to_excel(writer, index=False, sheet_name="Clean Data")
-excel_buffer.seek(0)
-
+st.markdown('<div class="section-title">Export Board-ready PDF</div>', unsafe_allow_html=True)
+pdf_bytes = make_pdf(filtered, wo_summary, nature)
 st.download_button(
-    "Download Excel Summary",
-    data=excel_buffer,
-    file_name=f"STC_Quality_Deviation_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "📄 Export Executive PDF Report",
+    data=pdf_bytes,
+    file_name="STC_Quality_Executive_Dashboard_Board_Report.pdf",
+    mime="application/pdf",
+    use_container_width=True,
 )
 
-pdf_buffer = make_pdf_report(filtered, wo_summary, top_deviation, scope_summary)
-if pdf_buffer is not None:
-    st.download_button(
-        "Download Executive PDF Report",
-        data=pdf_buffer,
-        file_name=f"STC_Quality_Executive_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-        mime="application/pdf",
-    )
-else:
-    st.caption("PDF export requires reportlab. Install dependencies from requirements.txt.")
-
-st.caption("Source: Deviation.xlsx only. No additional CSV/database files are required.")
+st.caption("Source file: Deviation.xlsx | Expected Penalties = penalties that should have been applied but were waived/cancelled.")
