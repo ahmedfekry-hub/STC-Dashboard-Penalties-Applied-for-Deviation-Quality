@@ -1,0 +1,5 @@
+Total deviations: 368
+Unique work orders: 8
+Districts impacted: 2
+Top WO: 2512000178 | 91 deviations | 24.73%
+Risk Score: Removed by user request.
