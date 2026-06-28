@@ -1,44 +1,38 @@
 # STC Quality Executive Dashboard
 
-Board-ready Streamlit dashboard for `Deviation.xlsx`.
+GitHub-ready Streamlit app using one data file only: `Deviation.xlsx`.
 
 ## Files
-- `app.py` - Streamlit dashboard and PDF export logic
-- `Deviation.xlsx` - the only data file required
-- `requirements.txt` - Python dependencies
-- `README.md` - deployment guide
+- `app.py`
+- `requirements.txt`
+- `README.md`
+- `Deviation.xlsx`
 
-## What is included
-- Executive KPI cards
-- Penalty Applied vs No Penalty vs Expected Penalties Waived donut chart
-- Top Work Orders by deviation count
-- Civil / Fiber / Safety classification
-- Executive Work Order Summary: one row per Work Order
-- Short deviation names, e.g. `DAMAGE TO PROPERTY` instead of the long original question
-- Board-ready PDF export
-
-## PDF notes
-The exported PDF intentionally excludes:
-- Service Affecting
-- Status
-
-The PDF table includes:
-- Work Order
-- District
-- Civil Foreman
-- Inspector
-- Total Deviations
-- Penalty Applied
-- No Penalty
-- Expected Penalties Waived
-- Civil / Fiber / Safety counts
-- Top 3 Deviations
-
-## Run locally
+## Run
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Streamlit Cloud / GitHub deployment
-Upload all files in this folder to your GitHub repository root, then deploy the repository from Streamlit Cloud.
+## Main Output
+The dashboard and exported PDF include an Executive Work Order Summary table with:
+
+- WorkOrderNum
+- Total Deviation
+- Penalty applied
+- No penalty applied
+- Expected Penalty Waived
+- Civil Deviation
+- Civil Penalty applied
+- Fiber Deviation
+- Fiber Penalty applied
+- Safety Deviation
+- Safety Penalty applied
+- % OF Total
+- Civil Foreman
+- Inspector
+
+`Service Affecting` and `Status` are intentionally excluded from the exported PDF.
+
+## Expected Penalty Waived
+Column `Expected Penalties` means the penalty was expected to be applied, but it was waived/cancelled.
